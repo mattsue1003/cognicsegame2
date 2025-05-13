@@ -1,0 +1,849 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>腦力體能訓練動畫生成器</title>
+    <!-- React 和 ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel -->
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Tone.js 用於更好的跨平台音頻支持 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        /* 確保頁面填滿整個視窗 */
+        html, body, #root {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        /* 滾動條樣式 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* 防止iOS縮放 */
+        input[type="text"],
+        input[type="number"],
+        input[type="range"],
+        textarea,
+        select {
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        function TrainerApp() {
+            // 基本狀態
+            const [isPlaying, setIsPlaying] = React.useState(false);
+            const [currentItem, setCurrentItem] = React.useState(null);
+            const [displayCount, setDisplayCount] = React.useState(0);
+            
+            // 時間設定
+            const [displayTime, setDisplayTime] = React.useState(1000);
+            const [pauseTime, setPauseTime] = React.useState(500);
+            
+            // 節拍器設定
+            const [useMetronome, setUseMetronome] = React.useState(false);
+            const [bpm, setBpm] = React.useState(120);
+            const [audioInitialized, setAudioInitialized] = React.useState(false);
+            const [audioTesting, setAudioTesting] = React.useState(false);
+            const [metronomeActive, setMetronomeActive] = React.useState(false);
+            
+            // 內容設定
+            const [showArrows, setShowArrows] = React.useState(true);
+            const [showColors, setShowColors] = React.useState(true);
+            const [showNumbers, setShowNumbers] = React.useState(true);
+            const [showShapes, setShowShapes] = React.useState(true);
+            const [showCustomText, setShowCustomText] = React.useState(false);
+            
+            // 顯示文字說明
+            const [showText, setShowText] = React.useState(false);
+            
+            // 自定義文字
+            const [customTexts, setCustomTexts] = React.useState(['加油', '專注', '放鬆', '呼吸']);
+            const [newCustomText, setNewCustomText] = React.useState('');
+            
+            // 計時器參考
+            const timerRef = React.useRef(null);
+            const pauseTimerRef = React.useRef(null);
+            const metronomeRef = React.useRef(null);
+            const startTimeRef = React.useRef(null);
+            const toneMetronomeRef = React.useRef(null);
+            const synRef = React.useRef(null);
+            
+            // 內容定義
+            const items = {
+                arrows: ['上', '下', '左', '右'],
+                colors: ['紅', '藍', '綠', '黃', '黑'],
+                numbers: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+                shapes: ['圓形', '三角形', '正方形', '五邊形']
+            };
+            
+            // 選項選擇狀態
+            const [selectedItems, setSelectedItems] = React.useState({
+                arrows: { '上': true, '下': true, '左': true, '右': true },
+                colors: { '紅': true, '藍': true, '綠': true, '黃': true, '黑': true },
+                numbers: { '0': true, '1': true, '2': true, '3': true, '4': true, '5': true, '6': true, '7': true, '8': true, '9': true },
+                shapes: { '圓形': true, '三角形': true, '正方形': true, '五邊形': true }
+            });
+            
+            // 初始化音頻 (針對移動設備)
+            const initializeAudio = React.useCallback(async () => {
+                try {
+                    if (!audioInitialized) {
+                        // 顯示測試狀態
+                        setAudioTesting(true);
+                        
+                        // 啟動 Tone.js
+                        await Tone.start();
+                        
+                        // 創建一個測試音符以確保音頻上下文已解鎖
+                        const testSynth = new Tone.MembraneSynth({
+                            envelope: {
+                                attack: 0.001,
+                                decay: 0.1,
+                                sustain: 0,
+                                release: 0.1
+                            }
+                        }).toDestination();
+                        
+                        // 測試音頻解鎖
+                        testSynth.triggerAttackRelease("C2", "16n");
+                        
+                        // 設置成功標誌
+                        setAudioInitialized(true);
+                        console.log("音頻已初始化");
+                        
+                        // 移除測試狀態
+                        setTimeout(() => {
+                            setAudioTesting(false);
+                        }, 1000);
+                    }
+                } catch (e) {
+                    console.error("初始化音頻失敗:", e);
+                    setAudioTesting(false);
+                }
+            }, [audioInitialized]);
+            
+            // 測試音效
+            const testAudio = React.useCallback(async () => {
+                try {
+                    setAudioTesting(true);
+                    
+                    if (!audioInitialized) {
+                        await initializeAudio();
+                    } else {
+                        const testSynth = new Tone.MembraneSynth({
+                            envelope: {
+                                attack: 0.001,
+                                decay: 0.2,
+                                sustain: 0,
+                                release: 0.2
+                            }
+                        }).toDestination();
+                        
+                        testSynth.triggerAttackRelease("C2", "8n");
+                    }
+                    
+                    setTimeout(() => {
+                        setAudioTesting(false);
+                    }, 1000);
+                } catch (e) {
+                    console.error("測試音效失敗:", e);
+                    setAudioTesting(false);
+                }
+            }, [audioInitialized, initializeAudio]);
+            
+            // 停止所有計時器
+            const stopAllTimers = () => {
+                clearTimeout(timerRef.current);
+                clearTimeout(pauseTimerRef.current);
+                clearInterval(metronomeRef.current);
+                
+                // 停止 Tone.js Transport 和節拍器
+                if (Tone.Transport.state === "started") {
+                    Tone.Transport.stop();
+                }
+                
+                if (toneMetronomeRef.current) {
+                    toneMetronomeRef.current.dispose();
+                    toneMetronomeRef.current = null;
+                }
+                
+                if (synRef.current) {
+                    synRef.current.dispose();
+                    synRef.current = null;
+                }
+                
+                setMetronomeActive(false);
+            };
+            
+            // 啟動節拍器 (使用 Tone.js)
+            const startMetronome = React.useCallback(async () => {
+                if (!useMetronome) return;
+                
+                try {
+                    // 確保音頻已初始化
+                    if (!audioInitialized) {
+                        await initializeAudio();
+                    }
+                    
+                    // 停止舊的節拍器
+                    if (Tone.Transport.state === "started") {
+                        Tone.Transport.stop();
+                    }
+                    
+                    // 清除舊的節拍器
+                    if (toneMetronomeRef.current) {
+                        toneMetronomeRef.current.dispose();
+                    }
+                    
+                    if (synRef.current) {
+                        synRef.current.dispose();
+                    }
+                    
+                    // 創建合成器
+                    synRef.current = new Tone.MembraneSynth({
+                        envelope: {
+                            attack: 0.001,
+                            decay: 0.1,
+                            sustain: 0,
+                            release: 0.1
+                        },
+                        octaves: 2,
+                        pitchDecay: 0.05
+                    }).toDestination();
+                    
+                    // 設置 BPM
+                    Tone.Transport.bpm.value = bpm;
+                    
+                    // 創建節拍循環
+                    toneMetronomeRef.current = new Tone.Loop(time => {
+                        if (synRef.current) {
+                            synRef.current.triggerAttackRelease("C2", "32n", time);
+                        }
+                    }, "4n").start(0);
+                    
+                    // 啟動 Transport
+                    Tone.Transport.start();
+                    setMetronomeActive(true);
+                    
+                } catch (e) {
+                    console.error("啟動節拍器失敗:", e);
+                    setMetronomeActive(false);
+                }
+            }, [useMetronome, audioInitialized, bpm, initializeAudio]);
+            
+            // 生成隨機項目
+            const getRandomItem = () => {
+                const availableTypes = [];
+                if (showArrows) availableTypes.push('arrows');
+                if (showColors) availableTypes.push('colors');
+                if (showNumbers) availableTypes.push('numbers');
+                if (showShapes) availableTypes.push('shapes');
+                if (showCustomText && customTexts.length > 0) availableTypes.push('customText');
+                
+                if (availableTypes.length === 0) return null;
+                
+                const randomType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+                
+                if (randomType === 'customText') {
+                    return { 
+                        type: 'customText', 
+                        value: customTexts[Math.floor(Math.random() * customTexts.length)] 
+                    };
+                }
+                
+                // 獲取該類型已啟用的項目
+                const typeItems = items[randomType];
+                const enabledItems = typeItems.filter(item => selectedItems[randomType][item]);
+                
+                // 如果該類型沒有啟用的項目，重新選擇類型
+                if (enabledItems.length === 0) {
+                    return getRandomItem();
+                }
+                
+                const randomValue = enabledItems[Math.floor(Math.random() * enabledItems.length)];
+                
+                return { type: randomType, value: randomValue };
+            };
+            
+            // 開始動畫
+            const startAnimation = React.useCallback(async () => {
+                if (isPlaying) return;
+                
+                // 初始化音頻 (針對移動設備)
+                if (useMetronome && !audioInitialized) {
+                    await initializeAudio();
+                }
+                
+                setIsPlaying(true);
+                setCurrentItem(null);
+                setDisplayCount(0);
+                startTimeRef.current = Date.now();
+                
+                if (useMetronome) {
+                    startMetronome();
+                }
+                
+                const showNext = () => {
+                    const item = getRandomItem();
+                    setCurrentItem(item);
+                    setDisplayCount(prev => prev + 1);
+                    
+                    timerRef.current = setTimeout(() => {
+                        setCurrentItem(null);
+                        
+                        pauseTimerRef.current = setTimeout(showNext, pauseTime);
+                    }, displayTime);
+                };
+                
+                showNext();
+            }, [isPlaying, useMetronome, audioInitialized, displayTime, pauseTime, initializeAudio, startMetronome]);
+            
+            // 停止動畫
+            const stopAnimation = React.useCallback(() => {
+                setIsPlaying(false);
+                setCurrentItem(null);
+                stopAllTimers();
+            }, []);
+            
+            // 監聽 BPM 變更
+            React.useEffect(() => {
+                if (audioInitialized && metronomeActive) {
+                    Tone.Transport.bpm.value = bpm;
+                }
+            }, [bpm, audioInitialized, metronomeActive]);
+            
+            // 清理計時器
+            React.useEffect(() => {
+                return () => {
+                    stopAllTimers();
+                };
+            }, []);
+            
+            // 渲染當前項目
+            const renderItem = () => {
+                if (!currentItem) return null;
+                
+                const { type, value } = currentItem;
+                
+                if (type === 'arrows') {
+                    let rotation = 0;
+                    if (value === '上') rotation = -90;
+                    else if (value === '下') rotation = 90;
+                    else if (value === '左') rotation = 180;
+                    else if (value === '右') rotation = 0;
+                    
+                    return (
+                        <div className="flex flex-col items-center">
+                            <div style={{ fontSize: '100px', transform: `rotate(${rotation}deg)` }} className="sm:text-9xl">→</div>
+                            {showText && <div className="mt-2 text-sm sm:text-base">{value}</div>}
+                        </div>
+                    );
+                }
+                else if (type === 'colors') {
+                    const colorMap = {
+                        '紅': 'bg-red-500',
+                        '藍': 'bg-blue-500',
+                        '綠': 'bg-green-500',
+                        '黃': 'bg-yellow-400',
+                        '黑': 'bg-black'
+                    };
+                    
+                    return (
+                        <div className="flex flex-col items-center">
+                            <div className={`${colorMap[value]} w-24 h-24 sm:w-32 sm:h-32 rounded-lg shadow-lg`}></div>
+                            {showText && <div className="mt-2 text-sm sm:text-base">{value}</div>}
+                        </div>
+                    );
+                }
+                else if (type === 'numbers') {
+                    return (
+                        <div className="flex flex-col items-center">
+                            <div className="text-7xl sm:text-8xl font-bold">{value}</div>
+                            {showText && <div className="mt-2 text-sm sm:text-base">{value}</div>}
+                        </div>
+                    );
+                }
+                else if (type === 'shapes') {
+                    let shapeElement;
+                    if (value === '圓形') {
+                        shapeElement = <div className="w-24 h-24 sm:w-32 sm:h-32 bg-blue-500 rounded-full shadow-lg"></div>;
+                    } else if (value === '三角形') {
+                        shapeElement = (
+                            <div style={{
+                                width: '0',
+                                height: '0',
+                                borderLeft: '40px solid transparent',
+                                borderRight: '40px solid transparent',
+                                borderBottom: '70px solid green'
+                            }} className="sm:border-l-[50px] sm:border-r-[50px] sm:border-b-[90px] shadow-lg"></div>
+                        );
+                    } else if (value === '正方形') {
+                        shapeElement = <div className="w-24 h-24 sm:w-32 sm:h-32 bg-purple-500 shadow-lg"></div>;
+                    } else if (value === '五邊形') {
+                        shapeElement = (
+                            <div className="w-24 h-24 sm:w-32 sm:h-32 bg-indigo-500 shadow-lg" style={{
+                                clipPath: 'polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%)'
+                            }}></div>
+                        );
+                    }
+                    
+                    return (
+                        <div className="flex flex-col items-center">
+                            {shapeElement}
+                            {showText && <div className="mt-2 text-sm sm:text-base">{value}</div>}
+                        </div>
+                    );
+                }
+                else if (type === 'customText') {
+                    return (
+                        <div className="flex flex-col items-center">
+                            <div className="text-3xl sm:text-5xl font-bold text-center">{value}</div>
+                        </div>
+                    );
+                }
+                
+                return null;
+            };
+            
+            // 任何類型是否有選中的項目
+            const hasActiveItems = () => {
+                if (showArrows && Object.values(selectedItems.arrows).some(v => v)) return true;
+                if (showColors && Object.values(selectedItems.colors).some(v => v)) return true;
+                if (showNumbers && Object.values(selectedItems.numbers).some(v => v)) return true;
+                if (showShapes && Object.values(selectedItems.shapes).some(v => v)) return true;
+                if (showCustomText && customTexts.length > 0) return true;
+                return false;
+            }
+            
+            return (
+                <div className="max-w-3xl mx-auto p-2 sm:p-4">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-center mb-4 sm:mb-6">腦力體能訓練動畫生成器</h1>
+                    
+                    {/* 提示音頻初始化 (針對移動設備) */}
+                    {useMetronome && !audioInitialized && (
+                        <div className="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-2 mb-4 rounded">
+                            <p className="font-bold">提示</p>
+                            <p className="text-sm">首次使用節拍器需要初始化音頻。請點擊下方按鈕：</p>
+                            <button 
+                                onClick={initializeAudio} 
+                                disabled={audioTesting}
+                                className="bg-blue-500 text-white py-1 px-3 rounded mt-2 text-sm hover:bg-blue-600 disabled:bg-blue-300"
+                            >
+                                {audioTesting ? "初始化中..." : "解鎖音頻 (僅需一次)"}
+                            </button>
+                        </div>
+                    )}
+                    
+                    <div className="bg-gray-100 p-3 sm:p-4 rounded-lg mb-4 sm:mb-6 shadow-md">
+                        <h2 className="text-lg sm:text-xl font-bold mb-3 sm:mb-4">設定</h2>
+                        
+                        {/* 圖片類型選擇 */}
+                        <div className="mb-3 sm:mb-4">
+                            <h3 className="font-medium mb-1 sm:mb-2 text-gray-700">選擇圖片類型</h3>
+                            <div className="flex flex-wrap gap-2 sm:gap-3 text-sm sm:text-base">
+                                <label className="flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showArrows} 
+                                        onChange={() => setShowArrows(!showArrows)}
+                                        disabled={isPlaying}
+                                        className="mr-1"
+                                    />
+                                    箭頭
+                                </label>
+                                <label className="flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showColors} 
+                                        onChange={() => setShowColors(!showColors)}
+                                        disabled={isPlaying}
+                                        className="mr-1"
+                                    />
+                                    顏色
+                                </label>
+                                <label className="flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showNumbers} 
+                                        onChange={() => setShowNumbers(!showNumbers)}
+                                        disabled={isPlaying}
+                                        className="mr-1"
+                                    />
+                                    數字
+                                </label>
+                                <label className="flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showShapes} 
+                                        onChange={() => setShowShapes(!showShapes)}
+                                        disabled={isPlaying}
+                                        className="mr-1"
+                                    />
+                                    形狀
+                                </label>
+                                <label className="flex items-center">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={showCustomText} 
+                                        onChange={() => setShowCustomText(!showCustomText)}
+                                        disabled={isPlaying}
+                                        className="mr-1"
+                                    />
+                                    自定義文字
+                                </label>
+                            </div>
+                            
+                            {/* 箭頭選項 */}
+                            {showArrows && (
+                                <div className="mt-2 sm:mt-3 ml-3 sm:ml-4 border-l-2 pl-2 sm:pl-3 border-gray-200">
+                                    <h4 className="font-medium mb-1 text-gray-600">箭頭選項</h4>
+                                    <div className="flex flex-wrap gap-2 sm:gap-3 text-sm sm:text-base">
+                                        {items.arrows.map(arrow => (
+                                            <label key={arrow} className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedItems.arrows[arrow]}
+                                                    onChange={() => {
+                                                        setSelectedItems({
+                                                            ...selectedItems,
+                                                            arrows: {
+                                                                ...selectedItems.arrows,
+                                                                [arrow]: !selectedItems.arrows[arrow]
+                                                            }
+                                                        });
+                                                    }}
+                                                    disabled={isPlaying}
+                                                    className="mr-1"
+                                                />
+                                                {arrow}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* 顏色選項 */}
+                            {showColors && (
+                                <div className="mt-2 sm:mt-3 ml-3 sm:ml-4 border-l-2 pl-2 sm:pl-3 border-gray-200">
+                                    <h4 className="font-medium mb-1 text-gray-600">顏色選項</h4>
+                                    <div className="flex flex-wrap gap-2 sm:gap-3 text-sm sm:text-base">
+                                        {items.colors.map(color => (
+                                            <label key={color} className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedItems.colors[color]}
+                                                    onChange={() => {
+                                                        setSelectedItems({
+                                                            ...selectedItems,
+                                                            colors: {
+                                                                ...selectedItems.colors,
+                                                                [color]: !selectedItems.colors[color]
+                                                            }
+                                                        });
+                                                    }}
+                                                    disabled={isPlaying}
+                                                    className="mr-1"
+                                                />
+                                                {color}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* 數字選項 */}
+                            {showNumbers && (
+                                <div className="mt-2 sm:mt-3 ml-3 sm:ml-4 border-l-2 pl-2 sm:pl-3 border-gray-200">
+                                    <h4 className="font-medium mb-1 text-gray-600">數字選項</h4>
+                                    <div className="flex flex-wrap gap-2 sm:gap-3 text-sm sm:text-base">
+                                        {items.numbers.map(number => (
+                                            <label key={number} className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedItems.numbers[number]}
+                                                    onChange={() => {
+                                                        setSelectedItems({
+                                                            ...selectedItems,
+                                                            numbers: {
+                                                                ...selectedItems.numbers,
+                                                                [number]: !selectedItems.numbers[number]
+                                                            }
+                                                        });
+                                                    }}
+                                                    disabled={isPlaying}
+                                                    className="mr-1"
+                                                />
+                                                {number}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* 形狀選項 */}
+                            {showShapes && (
+                                <div className="mt-2 sm:mt-3 ml-3 sm:ml-4 border-l-2 pl-2 sm:pl-3 border-gray-200">
+                                    <h4 className="font-medium mb-1 text-gray-600">形狀選項</h4>
+                                    <div className="flex flex-wrap gap-2 sm:gap-3 text-sm sm:text-base">
+                                        {items.shapes.map(shape => (
+                                            <label key={shape} className="flex items-center">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedItems.shapes[shape]}
+                                                    onChange={() => {
+                                                        setSelectedItems({
+                                                            ...selectedItems,
+                                                            shapes: {
+                                                                ...selectedItems.shapes,
+                                                                [shape]: !selectedItems.shapes[shape]
+                                                            }
+                                                        });
+                                                    }}
+                                                    disabled={isPlaying}
+                                                    className="mr-1"
+                                                />
+                                                {shape}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            
+                            {/* 自定義文字選項 */}
+                            {showCustomText && (
+                                <div className="mt-2 sm:mt-3 ml-3 sm:ml-4 border-l-2 pl-2 sm:pl-3 border-gray-200">
+                                    <h4 className="font-medium mb-1 text-gray-600">自定義文字</h4>
+                                    <div className="mb-2">
+                                        <ul className="pl-2 text-sm sm:text-base">
+                                            {customTexts.map((text, index) => (
+                                                <li key={index} className="flex justify-between items-center mb-1">
+                                                    <span>{text}</span>
+                                                    <button
+                                                        onClick={() => {
+                                                            if (!isPlaying) {
+                                                                setCustomTexts(customTexts.filter((_, i) => i !== index));
+                                                            }
+                                                        }}
+                                                        disabled={isPlaying}
+                                                        className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded text-xs disabled:bg-gray-400 hover:bg-red-600"
+                                                    >
+                                                        刪除
+                                                    </button>
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                    <div className="flex mt-2">
+                                        <input
+                                            type="text"
+                                            value={newCustomText}
+                                            onChange={(e) => setNewCustomText(e.target.value)}
+                                            placeholder="輸入自定義文字"
+                                            className="border border-gray-300 rounded px-2 py-1 text-sm sm:text-base mr-2 flex-grow"
+                                            disabled={isPlaying}
+                                        />
+                                        <button
+                                            onClick={() => {
+                                                if (newCustomText.trim() !== '') {
+                                                    setCustomTexts([...customTexts, newCustomText.trim()]);
+                                                    setNewCustomText('');
+                                                }
+                                            }}
+                                            disabled={isPlaying || newCustomText.trim() === ''}
+                                            className="bg-blue-500 text-white px-3 py-1 rounded text-sm sm:text-base disabled:bg-gray-400 hover:bg-blue-600"
+                                        >
+                                            新增
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* 時間設定 */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3 sm:mb-4">
+                            <div>
+                                <h3 className="font-medium mb-1 text-gray-700">圖片顯示時間 ({displayTime}ms)</h3>
+                                <input
+                                    type="range"
+                                    min="100"
+                                    max="3000"
+                                    step="100"
+                                    value={displayTime}
+                                    onChange={(e) => setDisplayTime(parseInt(e.target.value))}
+                                    disabled={isPlaying}
+                                    className="w-full"
+                                />
+                                <div className="flex
+<div className="flex justify-between mt-1 text-xs text-gray-500">
+                                    <span>100ms</span>
+                                    <span>{displayTime}ms</span>
+                                    <span>3000ms</span>
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <h3 className="font-medium mb-1 text-gray-700">圖片間隔時間 ({pauseTime}ms)</h3>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="2000"
+                                    step="100"
+                                    value={pauseTime}
+                                    onChange={(e) => setPauseTime(parseInt(e.target.value))}
+                                    disabled={isPlaying}
+                                    className="w-full"
+                                />
+                                <div className="flex justify-between mt-1 text-xs text-gray-500">
+                                    <span>0ms</span>
+                                    <span>{pauseTime}ms</span>
+                                    <span>2000ms</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        {/* 顯示設定 */}
+                        <div className="mb-3 sm:mb-4">
+                            <label className="flex items-center text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    checked={showText}
+                                    onChange={() => setShowText(!showText)}
+                                    disabled={isPlaying}
+                                    className="mr-1"
+                                />
+                                顯示文字說明
+                            </label>
+                        </div>
+                        
+                        {/* 節拍器設定 */}
+                        <div className="mb-3 sm:mb-4">
+                            <div className="flex items-center mb-1 sm:mb-2">
+                                <label className="flex items-center text-gray-700">
+                                    <input
+                                        type="checkbox"
+                                        checked={useMetronome}
+                                        onChange={() => {
+                                            setUseMetronome(!useMetronome);
+                                            // 當勾選節拍器時，嘗試初始化音頻
+                                            if (!useMetronome && !audioInitialized) {
+                                                initializeAudio();
+                                            }
+                                        }}
+                                        disabled={isPlaying}
+                                        className="mr-1"
+                                    />
+                                    啟用節拍器
+                                </label>
+                                
+                                {useMetronome && audioInitialized && (
+                                    <button 
+                                        onClick={testAudio} 
+                                        disabled={audioTesting}
+                                        className="ml-auto bg-gray-200 text-gray-700 py-1 px-2 rounded text-xs hover:bg-gray-300 disabled:bg-gray-100"
+                                    >
+                                        {audioTesting ? "測試中..." : "測試音效"}
+                                    </button>
+                                )}
+                            </div>
+                            
+                            {useMetronome && (
+                                <div className="ml-4">
+                                    <h3 className="font-medium mb-1 text-gray-600">速度 ({bpm} BPM)</h3>
+                                    <input
+                                        type="range"
+                                        min="60"
+                                        max="240"
+                                        step="10"
+                                        value={bpm}
+                                        onChange={(e) => setBpm(parseInt(e.target.value))}
+                                        disabled={isPlaying}
+                                        className="w-full"
+                                    />
+                                    <div className="flex justify-between mt-1 text-xs text-gray-500">
+                                        <span>60 BPM (慢)</span>
+                                        <span>{bpm} BPM</span>
+                                        <span>240 BPM (快)</span>
+                                    </div>
+                                    <div className="text-xs text-gray-600 mt-1">
+                                        <p>參考值: 60-80 BPM 適合超慢走、100-120 BPM 適合正常步行、</p>
+                                        <p>140-180 BPM 適合慢跑、190-240 BPM 適合快跑</p>
+                                    </div>
+                                    <div className="text-xs text-gray-500 mt-1 flex items-center">
+                                        <span>音頻狀態:</span> 
+                                        {audioInitialized ? 
+                                            <span className="text-green-500 ml-1">已初始化</span> : 
+                                            <span className="text-red-500 ml-1">未初始化</span>
+                                        }
+                                        {metronomeActive && <span className="text-blue-500 ml-2">節拍器運行中</span>}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        
+                        {/* 控制按鈕 */}
+                        <div className="flex justify-center gap-3 sm:gap-4 mt-4">
+                            <button
+                                onClick={startAnimation}
+                                disabled={isPlaying || !hasActiveItems() || (useMetronome && !audioInitialized)}
+                                className="bg-green-500 text-white py-2 px-4 sm:px-6 rounded-lg text-sm sm:text-base disabled:bg-gray-400 hover:bg-green-600 shadow-md transition-colors"
+                            >
+                                開始
+                            </button>
+                            
+                            <button
+                                onClick={stopAnimation}
+                                disabled={!isPlaying}
+                                className="bg-red-500 text-white py-2 px-4 sm:px-6 rounded-lg text-sm sm:text-base disabled:bg-gray-400 hover:bg-red-600 shadow-md transition-colors"
+                            >
+                                停止
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* 顯示區域 */}
+                    <div className="bg-white border-2 border-gray-200 rounded-lg p-4 sm:p-8 mb-4 sm:mb-6 h-48 sm:h-64 flex items-center justify-center shadow-md">
+                        {isPlaying && !currentItem && <div className="text-gray-500">請等待...</div>}
+                        {currentItem && renderItem()}
+                        {!isPlaying && !currentItem && <div className="text-gray-500 text-center">點擊「開始」按鈕開始訓練</div>}
+                    </div>
+                    
+                    {/* 統計信息 */}
+                    <div className="bg-gray-50 p-3 sm:p-4 rounded-lg shadow-md">
+                        <h3 className="font-medium mb-2 text-gray-700">訓練統計</h3>
+                        <p className="text-sm sm:text-base">已顯示圖片數量: {displayCount}</p>
+                        <p className="text-sm sm:text-base">已用時間: {isPlaying ? Math.floor((Date.now() - startTimeRef.current) / 1000) : 0} 秒</p>
+                    </div>
+                    
+                    {/* 版本信息 */}
+                    <div className="text-center text-xs text-gray-400 mt-4">
+                        腦力體能訓練動畫生成器 v1.0 | 問題回報: mattsue1003@gmail.com
+                    </div>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<TrainerApp />);
+    </script>
+</body>
+</html>
