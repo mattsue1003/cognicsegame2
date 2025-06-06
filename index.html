@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>腦力體能訓練動畫生成器</title>
+    <title>腦力體能訓練動畫生成器-合併型體智生成器</title>
     <!-- React 和 ReactDOM -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -77,7 +77,7 @@
             const [showText, setShowText] = React.useState(false);
             
             // 自定義文字
-            const [customTexts, setCustomTexts] = React.useState(['加油', '專注', '放鬆', '呼吸']);
+            const [customTexts, setCustomTexts] = React.useState(['深蹲', '踮腳尖', '軀幹向前延伸', '拍手']);
             const [newCustomText, setNewCustomText] = React.useState('');
             
             // 計時器參考
@@ -437,7 +437,7 @@
             
             return (
                 <div className="max-w-3xl mx-auto p-2 sm:p-4">
-                    <h1 className="text-2xl sm:text-3xl font-bold text-center mb-4 sm:mb-6">腦力體能訓練動畫生成器</h1>
+                    <h1 className="text-2xl sm:text-3xl font-bold text-center mb-4 sm:mb-6">腦力體能訓練動畫生成器-合併型體智生成器</h1>
                     
                     {/* 提示音頻初始化 (針對移動設備) */}
                     {useMetronome && !audioInitialized && (
@@ -835,7 +835,7 @@
                     
                     {/* 版本信息 */}
                     <div className="text-center text-xs text-gray-400 mt-4">
-                        腦力體能訓練動畫生成器 v1.0 | 問題回報: mattsue1003@gmail.com
+                        腦力體能訓練動畫生成器-合併型體智生成器 v1.0 
                     </div>
                 </div>
             );
